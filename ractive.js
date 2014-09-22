@@ -1,6 +1,6 @@
 /*
 	ractive.js v0.5.8
-	2014-09-18 - commit 2e726021 
+	2014-09-22 - commit 85b3d8bd 
 
 	http://ractivejs.org
 	http://twitter.com/RactiveJS
@@ -1515,6 +1515,9 @@
 		function combine( Parent, target, options ) {
 			var value = options.data || {},
 				parentValue = getAddedKeys( Parent.prototype.data );
+			if ( typeof value !== 'object' && typeof value !== 'function' ) {
+				throw new TypeError( 'data option must be an object or a function, "' + value + '" is not valid' );
+			}
 			return dispatch( parentValue, value );
 		}
 
@@ -8267,11 +8270,12 @@
 	}( namespaces, booleanAttributes );
 
 	/* virtualdom/items/Element/Attribute/prototype/toString.js */
-	var virtualdom_items_Element_Attribute$toString = function( booleanAttributes ) {
+	var virtualdom_items_Element_Attribute$toString = function( booleanAttributes, namespaces ) {
 
 		var __export;
 		__export = function Attribute$toString() {
 			var name = ( fragment = this ).name,
+				namespace = fragment.namespace,
 				value = fragment.value,
 				interpolator = fragment.interpolator,
 				fragment = fragment.fragment;
@@ -8294,14 +8298,27 @@
 			if ( fragment ) {
 				value = fragment.toString();
 			}
+			if ( namespace ) {
+				name = findKey( namespaces, namespace ) + ':' + name;
+			}
 			return value ? name + '="' + escape( value ) + '"' : name;
 		};
+
+		function findKey( object, value ) {
+			var key;
+			for ( key in object ) {
+				if ( object[ key ] === value ) {
+					return key;
+				}
+			}
+			return null;
+		}
 
 		function escape( value ) {
 			return value.replace( /&/g, '&amp;' ).replace( /"/g, '&quot;' ).replace( /'/g, '&#39;' );
 		}
 		return __export;
-	}( booleanAttributes );
+	}( booleanAttributes, namespaces );
 
 	/* virtualdom/items/Element/Attribute/prototype/unbind.js */
 	var virtualdom_items_Element_Attribute$unbind = function Attribute$unbind() {
@@ -11087,6 +11104,9 @@
 			this.type = types.PARTIAL;
 			this.name = options.template.r;
 			this.index = options.index;
+			// keep track of when the partial name matches a partial (as opposed to an expression) to
+			// avoid unnecessary jitter when using an overlapping name/keypath
+			this.namedPartial = false;
 			this.root = parentFragment.root;
 			Mustache.init( this, options );
 			this.update();
@@ -11153,7 +11173,7 @@
 			},
 			resolve: Mustache.resolve,
 			setValue: function( value ) {
-				if ( this.value !== value ) {
+				if ( this.value !== value && !this.namedPartial ) {
 					if ( this.fragment && this.rendered ) {
 						this.fragment.unrender( true );
 					}
@@ -11174,10 +11194,13 @@
 						noThrow: true
 					} ) ) ) {
 						template = getPartialDescriptor( this.root, this.name );
+						this.namedPartial = true;
 					} else if ( this.value ) {
 						template = getPartialDescriptor( this.root, this.value );
+						this.namedPartial = false;
 					} else {
 						template = [];
+						this.namedPartial = false;
 					}
 					this.fragment = new Fragment( {
 						template: template,
@@ -11748,7 +11771,8 @@
 			this.fragment = new Fragment( {
 				owner: this,
 				root: componentInstance.yield.instance,
-				template: componentInstance.yield.template
+				template: componentInstance.yield.template,
+				pElement: this.surrogateParent.pElement
 			} );
 			component.yielder = this;
 		};
